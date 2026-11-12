@@ -101,7 +101,7 @@ export default function Dashboard() {
           <svg className="w-8 h-8 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 22h20L12 2zm0 4.5l6.5 13h-13L12 6.5z"/></svg>
           <h1 className="text-2xl font-bold text-textMain">FinSight</h1>
         </div>
-        <button onClick={logout} className="flex items-center text-textMuted hover:text-danger transition-colors">
+        <button onClick={() => { queryClient.clear(); logout(); }} className="flex items-center text-textMuted hover:text-danger transition-colors">
           <LogOut className="w-5 h-5 mr-1" /> Logout
         </button>
       </div>
