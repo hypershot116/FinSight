@@ -18,6 +18,8 @@ export default function Dashboard() {
   const { logout } = useAuth();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ title: '', amount: '', category: 'Food', type: 'EXPENSE' });
+  const [aiInsight, setAiInsight] = useState<string>('');
+  const [loadingAi, setLoadingAi] = useState<boolean>(false);
 
   const { data: transactions = [], isLoading } = useQuery<Transaction[]>({
     queryKey: ['transactions'],
@@ -41,6 +43,18 @@ export default function Dashboard() {
     e.preventDefault();
     if (!form.title || !form.amount) return;
     addTransaction.mutate({ ...form, amount: parseFloat(form.amount.toString()) });
+  };
+
+  const fetchAiInsight = async () => {
+    setLoadingAi(true);
+    try {
+      // Using your existing axios 'api' instance handles the JWT token automatically
+      const res = await api.get('/insights');
+      setAiInsight(res.data.insight);
+    } catch (error: any) {
+      setAiInsight(error.response?.data?.detail || "Network error connecting to the AI module.");
+    }
+    setLoadingAi(false);
   };
 
   // Helper to safely check transaction type regardless of backend serialization
@@ -68,7 +82,7 @@ export default function Dashboard() {
   }));
 
   // 3. Dynamic Area Chart Data
-  const flowByDate = transactions.reduce((acc: any, t) => {
+  const flowByDate = transactions.reduce((acc: any, t)=> {
     const dateStr = new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const typeKey = isIncome(t.type) ? 'INCOME' : 'EXPENSE';
     if (!acc[dateStr]) acc[dateStr] = { date: dateStr, INCOME: 0, EXPENSE: 0 };
@@ -85,7 +99,7 @@ export default function Dashboard() {
       <div className="flex justify-between items-center mb-8">
         <div className="flex items-center text-primary">
           <svg className="w-8 h-8 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 22h20L12 2zm0 4.5l6.5 13h-13L12 6.5z"/></svg>
-          <h1 className="text-2xl font-bold text-textMain">Fiscaly</h1>
+          <h1 className="text-2xl font-bold text-textMain">FinSight</h1>
         </div>
         <button onClick={logout} className="flex items-center text-textMuted hover:text-danger transition-colors">
           <LogOut className="w-5 h-5 mr-1" /> Logout
@@ -136,7 +150,7 @@ export default function Dashboard() {
                     <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0284C7" stopOpacity={0.2}/><stop offset="95%" stopColor="#0284C7" stopOpacity={0}/></linearGradient>
                   </defs>
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748B'}} />
-                  <Tooltip cursor={{stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Tooltip cursor={{stroke: '#cbd5e1',strokeWidth: 1, strokeDasharray: '4 4'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
                   <Area type="monotone" name="Income" dataKey="INCOME" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorIncome)" />
                   <Area type="monotone" name="Expense" dataKey="EXPENSE" stroke="#0284C7" strokeWidth={2} fillOpacity={1} fill="url(#colorExpense)" />
@@ -170,8 +184,17 @@ export default function Dashboard() {
 
         <div className="space-y-6">
           <div className="bg-primary p-6 rounded-2xl shadow-card text-white">
-            <div className="flex items-center mb-3"><Sparkles className="w-5 h-5 mr-2" /><span className="font-semibold">AI Insight Ready</span></div>
-            <p className="text-sm leading-relaxed mb-4">Add a few transactions to establish a spending pattern. Your Gemini Pro integration will analyze them here.</p>
+            <div className="flex items-center mb-3"><Sparkles className="w-5 h-5 mr-2" /><span className="font-semibold">FinSight AI Analyst</span></div>
+            {aiInsight ? (
+              <p className="text-sm leading-relaxed mb-4">{aiInsight}</p>
+            ) : (
+              <div>
+                <p className="text-sm leading-relaxed mb-4 text-white/80">Requires at least 3 transactions to generate spending insights.</p>
+                <button onClick={fetchAiInsight} disabled={loadingAi} className="bg-white text-primary px-4 py-2 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-70 transition-colors text-sm">
+                  {loadingAi ? "Analyzing..." : "Generate Insight"}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="bg-surface p-6 rounded-2xl shadow-card flex-1">
