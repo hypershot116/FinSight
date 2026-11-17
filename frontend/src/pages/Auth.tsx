@@ -1,73 +1,69 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { Link } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function Auth() {
-  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
-  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
     try {
-      if (isLogin) {
-        const formData = new URLSearchParams();
-        formData.append('username', email);
-        formData.append('password', password);
-        const res = await api.post('/login', formData);
-        login(res.data.access_token);
-        navigate('/');
-      } else {
-        await api.post('/register', { email, password });
-        setIsLogin(true);
-        setError('Registration successful. Please log in.');
-      }
+      await login(email, password);
+      window.location.href = '/';
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Authentication failed');
+      setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-full max-w-md p-8 bg-surface shadow-card rounded-2xl">
-        <div className="flex items-center justify-center mb-8 text-primary">
-          <svg className="w-8 h-8 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 22h20L12 2zm0 4.5l6.5 13h-13L12 6.5z"/></svg>
-          <h1 className="text-2xl font-bold text-textMain">Fiscaly</h1>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">Sign in to FinSight</h2>
         </div>
         
-        <h2 className="text-xl font-semibold mb-6 text-center text-textMain">
-          {isLogin ? 'Welcome back' : 'Create an account'}
-        </h2>
-
-        {error && <div className="p-3 mb-4 text-sm text-danger bg-danger-light rounded-lg">{error}</div>}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-textMuted mb-1">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary" />
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {error && <div className="bg-red-50 p-4 rounded-md text-sm text-red-700">{error}</div>}
+          <div className="space-y-4">
+            <input type="email" required placeholder="Email address" value={email} onChange={e => setEmail(e.target.value)}
+              className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm" />
+            
+            <div className="relative">
+              <input type={showPassword ? "text" : "password"} required placeholder="Password" value={password} onChange={e => setPassword(e.target.value)}
+                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-teal-500 focus:border-teal-500 sm:text-sm pr-10" />
+              <button type="button" className="absolute inset-y-0 right-0 pr-3 flex items-center" onClick={() => setShowPassword(!showPassword)}>
+                {showPassword ? <EyeOff className="h-5 w-5 text-gray-400" /> : <Eye className="h-5 w-5 text-gray-400" />}
+              </button>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-textMuted mb-1">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-primary" />
+          
+          <div className="flex items-center justify-end">
+            <div className="text-sm">
+              <Link to="/forgot-password" className="font-medium text-teal-600 hover:text-teal-500">Forgot your password?</Link>
+            </div>
           </div>
-          <button type="submit" className="w-full py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors">
-            {isLogin ? 'Sign In' : 'Sign Up'}
+
+          <button type="submit" disabled={loading}
+            className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700 focus:outline-none disabled:bg-gray-400 transition-colors">
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
-
-        <p className="mt-6 text-center text-sm text-textMuted">
-          {isLogin ? "Don't have an account? " : "Already have an account? "}
-          <button onClick={() => setIsLogin(!isLogin)} className="text-primary font-medium hover:underline">
-            {isLogin ? 'Sign up' : 'Log in'}
-          </button>
-        </p>
+        
+        <div className="text-center mt-4">
+          <p className="text-sm text-gray-600">
+            Don't have an account? <Link to="/register" className="font-medium text-teal-600 hover:text-teal-500">Sign up here</Link>
+          </p>
+        </div>
       </div>
     </div>
   );
