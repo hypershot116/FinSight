@@ -40,8 +40,9 @@ def send_password_reset_email(to_email: str, token: str) -> bool:
     smtp_email = os.getenv("SMTP_EMAIL", "")
     smtp_password = os.getenv("SMTP_PASSWORD", "")
     
-    # The frontend URL where the user will type their new password
-    reset_link = f"http://localhost:5173/reset-password?token={token}"
+    # NEW LOGIC: Use live URL if available, otherwise fallback to localhost
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    reset_link = f"{frontend_url}/reset-password?token={token}"
 
     if not smtp_email or not smtp_password:
         print("\n" + "="*50)
