@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -9,6 +9,9 @@ class UserCreate(BaseModel):
 class UserResponse(BaseModel):
     id: int
     email: str
+    name: Optional[str] = None
+    is_admin: bool = False
+    
     class Config:
         from_attributes = True
 
@@ -26,5 +29,6 @@ class TransactionResponse(TransactionCreate):
     id: int
     user_id: int
     date: datetime
+    
     class Config:
         from_attributes = True
