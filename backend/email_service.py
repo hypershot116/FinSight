@@ -1,5 +1,10 @@
 import os
 import requests
+import random
+
+def generate_otp():
+    """Generates a 6-digit random OTP."""
+    return str(random.randint(100000, 999999))
 
 def send_otp_email(to_email: str, otp_code: str):
     api_key = os.getenv("RESEND_API_KEY")
