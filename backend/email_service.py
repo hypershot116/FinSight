@@ -6,7 +6,7 @@ def generate_otp():
     """Generates a 6-digit random OTP."""
     return str(random.randint(100000, 999999))
 
-def send_otp_email(to_email: str, otp_code: str):
+def send_otp_email(to_email: str, otp: str):
     api_key = os.getenv("RESEND_API_KEY")
     
     response = requests.post(
@@ -19,7 +19,7 @@ def send_otp_email(to_email: str, otp_code: str):
             "from": "FinSight <onboarding@resend.dev>",
             "to": [to_email],
             "subject": "Your FinSight Verification Code",
-            "html": f"<p>Your verification code is: <strong>{otp_code}</strong></p>"
+            "html": f"<p>Your verification code is: <strong>{otp}</strong></p>"
         }
     )
     
