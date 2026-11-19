@@ -1,13 +1,22 @@
+from sqlalchemy import inspect, text
 from database import engine
-from sqlalchemy import text
+
 
 def run_migration():
-    with engine.begin() as conn:
-        try:
-            conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;"))
-            print("Migration successful! is_admin column added.")
-        except Exception as e:
-            print(f"Migration check: Column likely already exists. ({e})")
+    print(f"Connected dialect: {engine.dialect.name} ({engine.url.host or engine.url.database})")
+    inspector = inspect(engine)
+    existing_columns = {col["name"] for col in inspector.get_columns("users")}
+
+    for col_name in ("is_admin", "is_master_admin"):
+        if col_name in existing_columns:
+            print(f"Column '{col_name}' already exists. Skipping.")
+            continue
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} BOOLEAN NOT NULL DEFAULT FALSE;"))
+            print(f"Added column '{col_name}' to users table.")
+
+    print("Migration complete.")
+
 
 if __name__ == "__main__":
     run_migration()

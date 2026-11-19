@@ -47,6 +47,10 @@ class UserStatusUpdate(BaseModel):
     is_active: bool
 
 
+class UserRoleUpdate(BaseModel):
+    is_admin: bool
+
+
 class ForgotPasswordRequest(BaseModel):
     email: str
 
@@ -128,10 +132,16 @@ def cleanup_ghost_accounts(db: Session):
     db.commit()
 
 
-# --- ADMIN DEPENDENCY ---
+# --- ADMIN DEPENDENCIES ---
 def get_current_admin(current_user: models.User = Depends(auth.get_current_user)):
-    if not current_user.is_admin:
+    if not (current_user.is_admin or current_user.is_master_admin):
         raise HTTPException(status_code=403, detail="Admin privileges required")
+    return current_user
+
+
+def get_current_master_admin(current_user: models.User = Depends(auth.get_current_user)):
+    if not current_user.is_master_admin:
+        raise HTTPException(status_code=403, detail="Master Admin privileges required")
     return current_user
 
 
@@ -302,8 +312,10 @@ def get_all_users(admin: models.User = Depends(get_current_admin), db: Session =
             "id": u.id,
             "name": u.name,
             "email": u.email,
-            "is_active": u.is_active,
-            "is_admin": u.is_admin,
+            "is_active": bool(u.is_active),
+            "is_admin": bool(u.is_admin),
+            "is_master_admin": bool(u.is_master_admin),
+            "has_pending_otp": u.otp_code is not None,
             "created_at": u.created_at,
         }
         for u in users
@@ -321,10 +333,46 @@ def update_user_status(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == admin.id:
-        raise HTTPException(status_code=400, detail="You cannot deactivate your own admin account.")
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own account.")
+    if user.is_master_admin:
+        raise HTTPException(status_code=403, detail="Master Admin accounts cannot be modified.")
+    if user.is_admin and not admin.is_master_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Only a Master Admin can modify another Admin's status.",
+        )
+
     user.is_active = payload.is_active
+    if payload.is_active:
+        user.otp_code = None
     db.commit()
-    return {"message": "Status updated"}
+    return {"message": "Status updated", "is_active": user.is_active}
+
+
+@app.put("/admin/users/{user_id}/role")
+def update_user_role(
+    user_id: int,
+    payload: UserRoleUpdate,
+    master_admin: models.User = Depends(get_current_master_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == master_admin.id:
+        raise HTTPException(status_code=400, detail="You cannot change your own role.")
+    if user.is_master_admin:
+        raise HTTPException(status_code=403, detail="Master Admin role cannot be modified.")
+    if payload.is_admin and not user.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="User must be active before promoting to Admin.",
+        )
+
+    user.is_admin = payload.is_admin
+    db.commit()
+    action = "promoted to Admin" if payload.is_admin else "demoted to User"
+    return {"message": f"{user.email} has been {action}.", "is_admin": user.is_admin}
 
 
 # --- AI INSIGHTS ---
