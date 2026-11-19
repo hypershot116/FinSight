@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import { api } from '../api';
 
 interface AuthContextType {
@@ -11,18 +11,28 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
+
+  useEffect(() => {
+    const syncAuthAcrossTabs = (event: StorageEvent) => {
+      if (event.key === 'token' || event.key === null) {
+        setToken(localStorage.getItem('token'));
+      }
+    };
+
+    window.addEventListener('storage', syncAuthAcrossTabs);
+    return () => window.removeEventListener('storage', syncAuthAcrossTabs);
+  }, []);
 
   const login = async (email: string, password: string) => {
-    // FastAPI OAuth2 requires form data, not standard JSON
     const formData = new URLSearchParams();
     formData.append('username', email);
     formData.append('password', password);
 
     const res = await api.post('/login', formData, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
-    
+
     const newToken = res.data.access_token;
     localStorage.setItem('token', newToken);
     setToken(newToken);
@@ -31,7 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
-    window.location.href = "/login";
+    window.location.href = '/login';
   };
 
   return (
@@ -43,6 +53,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within AuthProvider");
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
 };

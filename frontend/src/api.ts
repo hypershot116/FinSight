@@ -4,7 +4,7 @@ export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000',
 });
 
-// The Interceptor: Runs before EVERY request
+// Attach JWT token to outgoing requests
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -18,13 +18,18 @@ api.interceptors.request.use(
   }
 );
 
-// Optional: Global error handler to automatically log users out if their token expires
+// Log users out on expired tokens, but ignore 401s from the login form itself
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const requestUrl = error.config?.url || '';
+    const isLoginRequest = requestUrl.includes('/login');
+
+    if (error.response?.status === 401 && !isLoginRequest) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
