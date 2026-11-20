@@ -15,15 +15,18 @@ interface Transaction {
   date: string;
 }
 
+const EXPENSE_CATEGORIES = ['Food', 'Transport', 'Housing', 'General'];
+const INCOME_CATEGORIES = ['Salary', 'Investment', 'Other'];
+
 export default function Dashboard() {
   const { logout } = useAuth();
   const queryClient = useQueryClient();
-  
+
   // UI State
   const [form, setForm] = useState({ title: '', amount: '', category: 'Food', type: 'EXPENSE' });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
-  
+
   // AI State
   const [aiInsight, setAiInsight] = useState<string>('');
   const [loadingAi, setLoadingAi] = useState<boolean>(false);
@@ -34,7 +37,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const res = await api.get('/me');
       return res.data;
-    }
+    },
   });
 
   // Fetch Transactions
@@ -43,7 +46,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const res = await api.get('/transactions');
       return res.data;
-    }
+    },
   });
 
   // Mutations
@@ -58,7 +61,7 @@ export default function Dashboard() {
   });
 
   const updateTransaction = useMutation({
-    mutationFn: async ({ id, data }: { id: number, data: Omit<Transaction, 'id' | 'date'> }) => {
+    mutationFn: async ({ id, data }: { id: number; data: Omit<Transaction, 'id' | 'date'> }) => {
       await api.put(`/transactions/${id}`, data);
     },
     onSuccess: () => {
@@ -82,23 +85,46 @@ export default function Dashboard() {
     setEditingId(null);
   };
 
+  const handleTypeChange = (newType: string) => {
+    const validCategories = newType === 'INCOME' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+    const nextCategory = validCategories.includes(form.category)
+      ? form.category
+      : validCategories[0];
+    setForm({ ...form, type: newType, category: nextCategory });
+  };
+
   const handleEditClick = (tx: Transaction) => {
+    const normalizedType = tx.type?.toUpperCase().includes('INCOME') ? 'INCOME' : 'EXPENSE';
+    const validCategories = normalizedType === 'INCOME' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+    const normalizedCategory = validCategories.includes(tx.category)
+      ? tx.category
+      : validCategories[0];
+
     setForm({
       title: tx.title,
       amount: tx.amount.toString(),
-      category: tx.category,
-      type: tx.type
+      category: normalizedCategory,
+      type: normalizedType,
     });
     setEditingId(tx.id);
-    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll up to the form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title || !form.amount) return;
-    
-    const txData = { ...form, amount: parseFloat(form.amount.toString()) };
-    
+
+    const validCategories = form.type === 'INCOME' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+    const safeCategory = validCategories.includes(form.category)
+      ? form.category
+      : validCategories[0];
+
+    const txData = {
+      ...form,
+      category: safeCategory,
+      amount: parseFloat(form.amount.toString()),
+    };
+
     if (editingId) {
       updateTransaction.mutate({ id: editingId, data: txData });
     } else {
@@ -112,7 +138,7 @@ export default function Dashboard() {
       const res = await api.get('/insights');
       setAiInsight(res.data.insight);
     } catch (error: any) {
-      setAiInsight(error.response?.data?.detail || "Network error connecting to the AI module.");
+      setAiInsight(error.response?.data?.detail || 'Network error connecting to the AI module.');
     }
     setLoadingAi(false);
   };
@@ -121,11 +147,11 @@ export default function Dashboard() {
   const isIncome = (type: string) => type?.toUpperCase().includes('INCOME');
   const getAmount = (amount: any) => Number(amount) || 0;
 
-  const income = transactions.filter(t => isIncome(t.type)).reduce((acc, t) => acc + getAmount(t.amount), 0);
-  const expense = transactions.filter(t => !isIncome(t.type)).reduce((acc, t) => acc + getAmount(t.amount), 0);
+  const income = transactions.filter((t) => isIncome(t.type)).reduce((acc, t) => acc + getAmount(t.amount), 0);
+  const expense = transactions.filter((t) => !isIncome(t.type)).reduce((acc, t) => acc + getAmount(t.amount), 0);
   const balance = income - expense;
 
-  const filteredTransactions = transactions.filter(t => {
+  const filteredTransactions = transactions.filter((t) => {
     if (filterType === 'ALL') return true;
     if (filterType === 'INCOME') return isIncome(t.type);
     if (filterType === 'EXPENSE') return !isIncome(t.type);
@@ -133,7 +159,7 @@ export default function Dashboard() {
   });
 
   const expensesByCategory = transactions
-    .filter(t => !isIncome(t.type))
+    .filter((t) => !isIncome(t.type))
     .reduce((acc: any, t) => {
       acc[t.category] = (acc[t.category] || 0) + getAmount(t.amount);
       return acc;
@@ -143,17 +169,17 @@ export default function Dashboard() {
   const breakdownData = Object.keys(expensesByCategory).map((key, index) => ({
     name: key,
     value: expensesByCategory[key],
-    color: COLORS[index % COLORS.length]
+    color: COLORS[index % COLORS.length],
   }));
 
-  const flowByDate = transactions.reduce((acc: any, t)=> {
+  const flowByDate = transactions.reduce((acc: any, t) => {
     const dateStr = new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const typeKey = isIncome(t.type) ? 'INCOME' : 'EXPENSE';
     if (!acc[dateStr]) acc[dateStr] = { date: dateStr, INCOME: 0, EXPENSE: 0 };
     acc[dateStr][typeKey] += getAmount(t.amount);
     return acc;
   }, {});
-  
+
   const cashFlowData = Object.values(flowByDate).reverse();
 
   if (isLoading) return <div className="min-h-screen bg-background flex items-center justify-center">Loading...</div>;
@@ -163,9 +189,15 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <div className="flex items-center text-primary">
-          <svg className="w-8 h-8 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 22h20L12 2zm0 4.5l6.5 13h-13L12 6.5z"/></svg>
+          <svg className="w-8 h-8 mr-2" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2L2 22h20L12 2zm0 4.5l6.5 13h-13L12 6.5z" />
+          </svg>
           <h1 className="text-2xl font-bold text-textMain">FinSight</h1>
-          {userProfile?.name && <span className="ml-4 text-sm text-textMuted border-l pl-4 border-gray-300">Welcome, {userProfile.name}</span>}
+          {userProfile?.name && (
+            <span className="ml-4 text-sm text-textMuted border-l pl-4 border-gray-300">
+              Welcome, {userProfile.name}
+            </span>
+          )}
         </div>
         <div className="flex items-center">
           {userProfile?.is_admin && (
@@ -173,7 +205,13 @@ export default function Dashboard() {
               <ShieldAlert className="w-5 h-5 mr-1" /> Admin Panel
             </Link>
           )}
-          <button onClick={() => { queryClient.clear(); logout(); }} className="flex items-center text-textMuted hover:text-danger transition-colors">
+          <button
+            onClick={() => {
+              queryClient.clear();
+              logout();
+            }}
+            className="flex items-center text-textMuted hover:text-danger transition-colors"
+          >
             <LogOut className="w-5 h-5 mr-1" /> Logout
           </button>
         </div>
@@ -182,25 +220,35 @@ export default function Dashboard() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div className="bg-surface p-5 rounded-2xl shadow-card">
-          <div className="flex items-center text-textMuted mb-2"><Wallet className="w-4 h-4 mr-2" /> <span className="text-sm font-medium">Total Balance</span></div>
+          <div className="flex items-center text-textMuted mb-2">
+            <Wallet className="w-4 h-4 mr-2" /> <span className="text-sm font-medium">Total Balance</span>
+          </div>
           <div className="text-3xl font-bold text-textMain">${balance.toFixed(2)}</div>
         </div>
         <div className="bg-surface p-5 rounded-2xl shadow-card">
-          <div className="flex items-center text-textMuted mb-2"><TrendingDown className="w-4 h-4 mr-2" /> <span className="text-sm font-medium">Total Income</span></div>
+          <div className="flex items-center text-textMuted mb-2">
+            <TrendingDown className="w-4 h-4 mr-2" /> <span className="text-sm font-medium">Total Income</span>
+          </div>
           <div className="text-3xl font-bold text-success">${income.toFixed(2)}</div>
         </div>
         <div className="bg-surface p-5 rounded-2xl shadow-card">
-          <div className="flex items-center text-textMuted mb-2"><TrendingUp className="w-4 h-4 mr-2" /> <span className="text-sm font-medium">Total Expense</span></div>
+          <div className="flex items-center text-textMuted mb-2">
+            <TrendingUp className="w-4 h-4 mr-2" /> <span className="text-sm font-medium">Total Expense</span>
+          </div>
           <div className="text-3xl font-bold text-danger">${expense.toFixed(2)}</div>
         </div>
         <div className="bg-surface p-5 rounded-2xl shadow-card">
-          <div className="flex items-center text-textMuted mb-2"><PieIcon className="w-4 h-4 mr-2" /> <span className="text-sm font-medium">Expense Breakdown</span></div>
+          <div className="flex items-center text-textMuted mb-2">
+            <PieIcon className="w-4 h-4 mr-2" /> <span className="text-sm font-medium">Expense Breakdown</span>
+          </div>
           <div className="h-24 w-full flex items-center justify-center">
             {breakdownData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={breakdownData} innerRadius={25} outerRadius={40} dataKey="value" stroke="none">
-                    {breakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                    {breakdownData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
                   </Pie>
                   <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                 </PieChart>
@@ -214,7 +262,6 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          
           {/* Chart Section */}
           <div className="bg-surface p-6 rounded-2xl shadow-card flex flex-col justify-between">
             <h3 className="text-lg font-bold text-textMain mb-4">Cash Flow Overview</h3>
@@ -223,11 +270,20 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={cashFlowData}>
                     <defs>
-                      <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10B981" stopOpacity={0.2}/><stop offset="95%" stopColor="#10B981" stopOpacity={0}/></linearGradient>
-                      <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0284C7" stopOpacity={0.2}/><stop offset="95%" stopColor="#0284C7" stopOpacity={0}/></linearGradient>
+                      <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#0284C7" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#0284C7" stopOpacity={0} />
+                      </linearGradient>
                     </defs>
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#64748B'}} />
-                    <Tooltip cursor={{stroke: '#cbd5e1',strokeWidth: 1, strokeDasharray: '4 4'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
+                    <Tooltip
+                      cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
                     <Area type="monotone" name="Income" dataKey="INCOME" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorIncome)" />
                     <Area type="monotone" name="Expense" dataKey="EXPENSE" stroke="#0284C7" strokeWidth={2} fillOpacity={1} fill="url(#colorExpense)" />
@@ -237,44 +293,63 @@ export default function Dashboard() {
                 <div className="w-full h-full flex items-center justify-center text-textMuted text-sm">Add data to see cash flow</div>
               )}
             </div>
-            
+
             {/* Action Form */}
             <div className={`border-t border-gray-100 pt-4 transition-colors ${editingId ? 'bg-yellow-50/50 -mx-6 px-6 pb-2 rounded-b-2xl' : ''}`}>
               <div className="flex justify-between items-center mb-3">
-                <h3 className="text-sm font-bold text-textMain">
-                  {editingId ? 'Edit Transaction' : 'Quick Add Transaction'}
-                </h3>
+                <h3 className="text-sm font-bold text-textMain">{editingId ? 'Edit Transaction' : 'Quick Add Transaction'}</h3>
                 {editingId && (
-                  <button onClick={resetForm} className="text-xs text-gray-500 hover:text-gray-700">Cancel Edit</button>
+                  <button type="button" onClick={resetForm} className="text-xs text-gray-500 hover:text-gray-700">
+                    Cancel Edit
+                  </button>
                 )}
               </div>
-              
-              <form onSubmit={handleSubmit} className="flex gap-3 flex-wrap">
-                <input type="text" required placeholder="Title (e.g. Salary, Coffee)" value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="flex-1 min-w-[150px] px-3 py-2 border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm transition-all bg-white" />
-                <input type="number" step="0.01" required placeholder="Amount" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} className="w-24 px-3 py-2 border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm transition-all bg-white" />
-                
-                {/* Dynamically update category options based on income/expense */}
-                {form.type === 'EXPENSE' ? (
-                  <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="px-3 py-2 border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm bg-white transition-all">
-                    <option value="Food">Food</option>
-                    <option value="Transport">Transport</option>
-                    <option value="Housing">Housing</option>
-                    <option value="General">General</option>
-                  </select>
-                ) : (
-                  <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="px-3 py-2 border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm bg-white transition-all">
-                    <option value="Salary">Salary</option>
-                    <option value="Investment">Investment</option>
-                    <option value="Other">Other</option>
-                  </select>
-                )}
 
-                <select value={form.type} onChange={e => setForm({...form, type: e.target.value})} className="px-3 py-2 border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm bg-white transition-all">
+              <form onSubmit={handleSubmit} className="flex gap-3 flex-wrap">
+                <input
+                  type="text"
+                  required
+                  placeholder="Title (e.g. Salary, Coffee)"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  className="flex-1 min-w-[150px] px-3 py-2 border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm transition-all bg-white"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="Amount"
+                  value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  className="w-24 px-3 py-2 border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm transition-all bg-white"
+                />
+
+                <select
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  className="px-3 py-2 border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm bg-white transition-all"
+                >
+                  {(form.type === 'INCOME' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={form.type}
+                  onChange={(e) => handleTypeChange(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary rounded-lg text-sm bg-white transition-all"
+                >
                   <option value="EXPENSE">Expense</option>
                   <option value="INCOME">Income</option>
                 </select>
-                
-                <button type="submit" disabled={addTransaction.isPending || updateTransaction.isPending} className={`${editingId ? 'bg-yellow-500' : 'bg-primary'} hover:bg-opacity-90 text-white p-2 rounded-lg transition-colors flex items-center`}>
+
+                <button
+                  type="submit"
+                  disabled={addTransaction.isPending || updateTransaction.isPending}
+                  className={`${editingId ? 'bg-yellow-500' : 'bg-primary'} hover:bg-opacity-90 text-white p-2 rounded-lg transition-colors flex items-center`}
+                >
                   {editingId ? <Check className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                 </button>
               </form>
@@ -285,14 +360,23 @@ export default function Dashboard() {
         {/* Right Column: AI & Detailed List */}
         <div className="space-y-6">
           <div className="bg-primary p-6 rounded-2xl shadow-card text-white">
-            <div className="flex items-center mb-3"><Sparkles className="w-5 h-5 mr-2" /><span className="font-semibold">FinSight AI Analyst</span></div>
+            <div className="flex items-center mb-3">
+              <Sparkles className="w-5 h-5 mr-2" />
+              <span className="font-semibold">FinSight AI Analyst</span>
+            </div>
             {aiInsight ? (
               <p className="text-sm leading-relaxed mb-4">{aiInsight}</p>
             ) : (
               <div>
-                <p className="text-sm leading-relaxed mb-4 text-white/80">Requires at least 3 transactions to generate spending insights.</p>
-                <button onClick={fetchAiInsight} disabled={loadingAi} className="bg-white text-primary px-4 py-2 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-70 transition-colors text-sm">
-                  {loadingAi ? "Analyzing..." : "Generate Insight"}
+                <p className="text-sm leading-relaxed mb-4 text-white/80">
+                  Requires at least 3 transactions to generate spending insights.
+                </p>
+                <button
+                  onClick={fetchAiInsight}
+                  disabled={loadingAi}
+                  className="bg-white text-primary px-4 py-2 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-70 transition-colors text-sm"
+                >
+                  {loadingAi ? 'Analyzing...' : 'Generate Insight'}
                 </button>
               </div>
             )}
@@ -302,32 +386,61 @@ export default function Dashboard() {
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-textMain">Transactions</h3>
               <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
-                <button onClick={() => setFilterType('ALL')} className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${filterType === 'ALL' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>All</button>
-                <button onClick={() => setFilterType('INCOME')} className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${filterType === 'INCOME' ? 'bg-white shadow-sm text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>In</button>
-                <button onClick={() => setFilterType('EXPENSE')} className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${filterType === 'EXPENSE' ? 'bg-white shadow-sm text-red-500' : 'text-gray-500 hover:text-gray-700'}`}>Out</button>
+                <button
+                  onClick={() => setFilterType('ALL')}
+                  className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                    filterType === 'ALL' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setFilterType('INCOME')}
+                  className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                    filterType === 'INCOME' ? 'bg-white shadow-sm text-green-600' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  In
+                </button>
+                <button
+                  onClick={() => setFilterType('EXPENSE')}
+                  className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                    filterType === 'EXPENSE' ? 'bg-white shadow-sm text-red-500' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Out
+                </button>
               </div>
             </div>
-            
+
             <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-1">
               {filteredTransactions.length === 0 ? <p className="text-sm text-textMuted text-center mt-8">No transactions found.</p> : null}
-              {filteredTransactions.map(tx => (
-                <div key={tx.id} className="flex justify-between items-center text-sm border border-gray-100 p-3 rounded-xl hover:border-gray-200 transition-colors group">
+              {filteredTransactions.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="flex justify-between items-center text-sm border border-gray-100 p-3 rounded-xl hover:border-gray-200 transition-colors group"
+                >
                   <div className="flex-1">
                     <p className="font-semibold text-textMain">{tx.title}</p>
-                    <p className="text-xs text-textMuted">{tx.category} • {new Date(tx.date).toLocaleDateString()}</p>
+                    <p className="text-xs text-textMuted">
+                      {tx.category} • {new Date(tx.date).toLocaleDateString()}
+                    </p>
                   </div>
-                  
+
                   <div className="flex items-center gap-4">
                     <span className={`font-bold ${isIncome(tx.type) ? 'text-success' : 'text-danger'}`}>
                       {isIncome(tx.type) ? '+' : '-'}${getAmount(tx.amount).toFixed(2)}
                     </span>
-                    
-                    {/* Hidden by default, appears on hover */}
+
                     <div className="flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => handleEditClick(tx)} className="text-gray-400 hover:text-blue-500 transition-colors">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button onClick={() => deleteTransaction.mutate(tx.id)} disabled={deleteTransaction.isPending} className="text-gray-400 hover:text-red-500 transition-colors">
+                      <button
+                        onClick={() => deleteTransaction.mutate(tx.id)}
+                        disabled={deleteTransaction.isPending}
+                        className="text-gray-400 hover:text-red-500 transition-colors"
+                      >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
