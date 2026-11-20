@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { Wallet, TrendingUp, TrendingDown, PieChart as PieIcon, Sparkles, LogOut, Plus, ShieldAlert, Trash2, Pencil, Check } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, PieChart as PieIcon, Sparkles, LogOut, Plus, ShieldAlert, Trash2, Pencil, Check, Key, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface Transaction {
@@ -27,9 +27,19 @@ export default function Dashboard() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
 
-  // AI State
+  // AI & BYOK State (stored only in browser localStorage, never sent to DB)
   const [aiInsight, setAiInsight] = useState<string>('');
+  const [aiProviderUsed, setAiProviderUsed] = useState<string>('');
   const [loadingAi, setLoadingAi] = useState<boolean>(false);
+  const [showKeySettings, setShowKeySettings] = useState<boolean>(false);
+  const [savedAiKey, setSavedAiKey] = useState<string>(() => localStorage.getItem('finsight_ai_key') || '');
+  const [savedAiProvider, setSavedAiProvider] = useState<'groq' | 'gemini'>(
+    () => (localStorage.getItem('finsight_ai_provider') as 'groq' | 'gemini') || 'groq'
+  );
+  const [keyInput, setKeyInput] = useState<string>(() => localStorage.getItem('finsight_ai_key') || '');
+  const [providerInput, setProviderInput] = useState<'groq' | 'gemini'>(
+    () => (localStorage.getItem('finsight_ai_provider') as 'groq' | 'gemini') || 'groq'
+  );
 
   // Fetch Current User Profile
   const { data: userProfile } = useQuery({
@@ -132,13 +142,42 @@ export default function Dashboard() {
     }
   };
 
+  const handleSaveAiKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = keyInput.trim();
+    if (!trimmed) return;
+    localStorage.setItem('finsight_ai_key', trimmed);
+    localStorage.setItem('finsight_ai_provider', providerInput);
+    setSavedAiKey(trimmed);
+    setSavedAiProvider(providerInput);
+    setShowKeySettings(false);
+    setAiInsight('');
+  };
+
+  const handleClearAiKey = () => {
+    localStorage.removeItem('finsight_ai_key');
+    localStorage.removeItem('finsight_ai_provider');
+    setSavedAiKey('');
+    setKeyInput('');
+    setProviderInput('groq');
+    setSavedAiProvider('groq');
+    setAiInsight('');
+  };
+
   const fetchAiInsight = async () => {
     setLoadingAi(true);
     try {
-      const res = await api.get('/insights');
+      const headers: Record<string, string> = {};
+      if (savedAiKey) {
+        headers['X-AI-Key'] = savedAiKey;
+        headers['X-AI-Provider'] = savedAiProvider;
+      }
+      const res = await api.get('/insights', { headers });
       setAiInsight(res.data.insight);
+      setAiProviderUsed(res.data.provider || '');
     } catch (error: any) {
       setAiInsight(error.response?.data?.detail || 'Network error connecting to the AI module.');
+      setAiProviderUsed('');
     }
     setLoadingAi(false);
   };
@@ -360,15 +399,101 @@ export default function Dashboard() {
         {/* Right Column: AI & Detailed List */}
         <div className="space-y-6">
           <div className="bg-primary p-6 rounded-2xl shadow-card text-white">
-            <div className="flex items-center mb-3">
-              <Sparkles className="w-5 h-5 mr-2" />
-              <span className="font-semibold">FinSight AI Analyst</span>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center">
+                <Sparkles className="w-5 h-5 mr-2" />
+                <span className="font-semibold">FinSight AI Analyst</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowKeySettings(!showKeySettings)}
+                className="flex items-center text-xs bg-white/15 hover:bg-white/25 px-2.5 py-1 rounded-lg transition-colors"
+                title="Configure your own free API key"
+              >
+                <Key className="w-3.5 h-3.5 mr-1" />
+                {savedAiKey ? 'Custom Key Active' : 'Use Your Key'}
+              </button>
             </div>
+
+            {showKeySettings && (
+              <div className="mb-4 p-3.5 rounded-xl bg-black/20 border border-white/15 text-xs space-y-3">
+                <div className="leading-relaxed text-white/95">
+                  <p className="font-semibold mb-1">Why we recommend a free Groq API Key:</p>
+                  <p className="text-white/85">
+                    Google AI Studio&apos;s free tier frequently hits strict <code className="bg-white/15 px-1 rounded">429</code> rate/quota limits on the very first request. <strong>Groq</strong> gives you a free key with no credit card, instant responses, and generous daily limits.
+                  </p>
+                  <a
+                    href="https://console.groq.com/keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center mt-1.5 font-semibold underline hover:text-white"
+                  >
+                    Get a free Groq API key in 30 seconds <ExternalLink className="w-3 h-3 ml-1" />
+                  </a>
+                </div>
+
+                <form onSubmit={handleSaveAiKey} className="space-y-2">
+                  <div className="flex gap-2">
+                    <select
+                      value={providerInput}
+                      onChange={(e) => setProviderInput(e.target.value as 'groq' | 'gemini')}
+                      className="px-2 py-1.5 rounded bg-white text-gray-900 text-xs font-medium focus:outline-none"
+                    >
+                      <option value="groq">Groq (Recommended)</option>
+                      <option value="gemini">Google Gemini</option>
+                    </select>
+                    <input
+                      type="password"
+                      placeholder={providerInput === 'groq' ? 'gsk_...' : 'AIza...'}
+                      value={keyInput}
+                      onChange={(e) => setKeyInput(e.target.value)}
+                      className="flex-1 min-w-0 px-2.5 py-1.5 rounded bg-white text-gray-900 text-xs focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-white/70">Stored locally in your browser only.</span>
+                    <div className="flex gap-2">
+                      {savedAiKey && (
+                        <button
+                          type="button"
+                          onClick={handleClearAiKey}
+                          className="px-2.5 py-1 rounded bg-red-500/80 hover:bg-red-500 text-white font-medium"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={!keyInput.trim()}
+                        className="px-3 py-1 rounded bg-white text-primary font-semibold hover:bg-gray-100 disabled:opacity-50"
+                      >
+                        Save Key
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            )}
+
             {aiInsight ? (
-              <p className="text-sm leading-relaxed mb-4">{aiInsight}</p>
+              <div>
+                <p className="text-sm leading-relaxed mb-3">{aiInsight}</p>
+                <div className="flex items-center justify-between pt-2 border-t border-white/15">
+                  <span className="text-[11px] text-white/75">
+                    {aiProviderUsed ? `Powered by ${aiProviderUsed}` : ''}
+                  </span>
+                  <button
+                    onClick={fetchAiInsight}
+                    disabled={loadingAi}
+                    className="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg font-medium disabled:opacity-70 transition-colors text-xs"
+                  >
+                    {loadingAi ? 'Analyzing...' : 'Regenerate'}
+                  </button>
+                </div>
+              </div>
             ) : (
               <div>
-                <p className="text-sm leading-relaxed mb-4 text-white/80">
+                <p className="text-sm leading-relaxed mb-4 text-white/85">
                   Requires at least 3 transactions to generate spending insights.
                 </p>
                 <button

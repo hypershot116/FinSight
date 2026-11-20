@@ -4,10 +4,10 @@ import re
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, status
+import requests
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from google import genai
 from jose import jwt
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -375,15 +375,79 @@ def update_user_role(
     return {"message": f"{user.email} has been {action}.", "is_admin": user.is_admin}
 
 
-# --- AI INSIGHTS ---
+# --- AI INSIGHTS (GROQ PRIMARY + OPTIONAL BYOK) ---
+def _call_groq(api_key: str, prompt: str) -> str:
+    resp = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.4,
+            "max_tokens": 250,
+        },
+        timeout=20,
+    )
+    if resp.status_code == 401:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Groq API key. Please check your key (starts with gsk_) and try again.",
+        )
+    if resp.status_code == 429:
+        raise HTTPException(
+            status_code=429,
+            detail="Groq rate limit reached. Wait a few seconds and try again.",
+        )
+    if not resp.ok:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Groq API error ({resp.status_code}): {resp.text[:200]}",
+        )
+    data = resp.json()
+    return data["choices"][0]["message"]["content"].strip()
+
+
+def _call_gemini(api_key: str, prompt: str) -> str:
+    resp = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
+        headers={"Content-Type": "application/json"},
+        json={"contents": [{"parts": [{"text": prompt}]}]},
+        timeout=20,
+    )
+    if resp.status_code in (400, 401, 403):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Google Gemini API key. Consider using a free Groq API key (gsk_...) instead.",
+        )
+    if resp.status_code == 429:
+        raise HTTPException(
+            status_code=429,
+            detail="Google Gemini free-tier quota exceeded (429). Switch to a free Groq API key for reliable access.",
+        )
+    if not resp.ok:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gemini API error ({resp.status_code}): {resp.text[:200]}",
+        )
+    data = resp.json()
+    return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+
 @app.get("/insights")
 def get_financial_insights(
+    x_ai_key: Optional[str] = Header(default=None, alias="X-AI-Key"),
+    x_ai_provider: Optional[str] = Header(default=None, alias="X-AI-Provider"),
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(get_db),
 ):
     transactions = (
         db.query(models.Transaction)
         .filter(models.Transaction.user_id == current_user.id)
+        .order_by(models.Transaction.date.desc())
+        .limit(50)
         .all()
     )
     if len(transactions) < 3:
@@ -400,20 +464,43 @@ def get_financial_insights(
     )
 
     prompt = f"""
-    You are a blunt, expert financial analyst. Analyze this transaction history.
-    Provide a short, punchy 3-sentence financial insight.
-    Identify their biggest spending drain and suggest one specific, actionable improvement.
-    Do not use any markdown formatting or bullet points. Just standard text.
+You are a blunt, expert financial analyst. Analyze this transaction history.
+Provide a short, punchy 3-sentence financial insight.
+Identify their biggest spending drain and suggest one specific, actionable improvement.
+Do not use any markdown formatting or bullet points. Just standard text.
 
-    Transaction History:
-    {data_str}
-    """
-    try:
-        client = genai.Client()
-        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-        return {"insight": response.text.strip()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+Transaction History:
+{data_str}
+"""
+
+    user_key = (x_ai_key or "").strip()
+    if user_key:
+        provider = (x_ai_provider or "").strip().lower()
+        if user_key.startswith("gsk_") or provider == "groq":
+            insight = _call_groq(user_key, prompt)
+            return {"insight": insight, "provider": "Groq (Personal Key)"}
+        if user_key.startswith("AIza") or provider == "gemini":
+            insight = _call_gemini(user_key, prompt)
+            return {"insight": insight, "provider": "Gemini (Personal Key)"}
+        raise HTTPException(
+            status_code=400,
+            detail="Unrecognized API key format. Paste a Groq key (gsk_...) or Gemini key (AIza...).",
+        )
+
+    server_groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    if server_groq_key:
+        insight = _call_groq(server_groq_key, prompt)
+        return {"insight": insight, "provider": "Groq"}
+
+    server_gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if server_gemini_key:
+        insight = _call_gemini(server_gemini_key, prompt)
+        return {"insight": insight, "provider": "Gemini"}
+
+    raise HTTPException(
+        status_code=400,
+        detail="No server AI key configured. Click 'Use Your Own API Key' to add a free Groq API key.",
+    )
 
 
 # --- PASSWORD RECOVERY ---
