@@ -1,7 +1,24 @@
+# Dependencies
 node_modules/
-__pycache__/
 venv/
 .venv/
+
+# Build & Cache
+dist/
+build/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Environment & Secrets (keep .env.example tracked)
 .env
+.env.*
+!.env.example
+
+# Local Databases & OS/Editor Files
 *.db
+*.sqlite
+*.sqlite3
 .DS_Store
+.vscode/
+.idea/
