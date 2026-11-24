@@ -15,7 +15,11 @@ export default function Auth() {
   const { login, loginDemo } = useAuth();
 
   useEffect(() => {
-    api.get('/health').then(() => setServerReady(true)).catch(() => {});
+    let on = true;
+    const ping = () => api.get('/health', { timeout: 5000 }).then(() => { if (on) { setServerReady(true); clearInterval(id); } }).catch(() => {});
+    ping();
+    const id = setInterval(ping, 2500);
+    return () => { on = false; clearInterval(id); };
   }, []);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +53,7 @@ export default function Auth() {
         <div className="text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 mb-3">
             {serverReady ? (
-              <><span className="w-2 h-2 rounded-full bg-emerald-500" /> Server online</>
+              <><span className="w-2 h-2 rounded-full bg-emerald-500" /> Cloud server live</>
             ) : (
               <><Loader2 className="w-3 h-3 animate-spin text-amber-500" /> Waking up cloud server...</>
             )}
