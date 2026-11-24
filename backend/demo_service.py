@@ -39,6 +39,10 @@ def ensure_demo_user_and_seed(db: Session) -> models.User:
                 category=cat, type=tx_type, date=now - timedelta(days=days_ago)
             ))
         db.commit()
+    if db.query(models.Budget).filter(models.Budget.user_id == user.id).count() == 0:
+        for cat, lim in [("Food", 450.0), ("Housing", 1600.0), ("Transport", 150.0), ("General", 200.0)]:
+            db.add(models.Budget(user_id=user.id, category=cat, monthly_limit=lim))
+        db.commit()
     return user
 
 def generate_rule_based_insight(transactions) -> str:

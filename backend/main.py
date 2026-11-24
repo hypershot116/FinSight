@@ -15,13 +15,16 @@ from sqlalchemy.orm import Session
 import auth
 import demo_service
 import email_service
+import finance_routes
 import models
 import schemas
 from database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
+finance_routes.ensure_finance_schema(engine)
 
 app = FastAPI(title="FinSight API")
+app.include_router(finance_routes.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -236,7 +239,7 @@ def create_transaction(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    db_transaction = models.Transaction(**transaction.model_dump(), user_id=current_user.id)
+    db_transaction = models.Transaction(**{k: v for k, v in transaction.model_dump().items() if v is not None}, user_id=current_user.id)
     db.add(db_transaction)
     db.commit()
     db.refresh(db_transaction)
@@ -275,7 +278,7 @@ def update_transaction(
         raise HTTPException(status_code=404, detail="Transaction not found")
 
     for key, value in transaction.model_dump().items():
-        setattr(db_tx, key, value)
+        setattr(db_tx, key, value) if not (key == 'date' and value is None) else None
 
     db.commit()
     db.refresh(db_tx)
