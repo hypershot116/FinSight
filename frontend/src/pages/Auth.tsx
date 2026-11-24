@@ -42,7 +42,7 @@ export default function Auth() {
       await loginDemo();
       window.location.href = '/';
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Demo login failed. Server may still be waking up—try again.');
+      setError(err.response?.data?.detail || 'Demo login failed (' + (err.response?.status || 'network') + ').');
     } finally {
       setDemoLoading(false);
     }
