@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import auth
+import demo_service
 import email_service
 import models
 import schemas
@@ -334,7 +335,7 @@ def update_user_status(
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail="You cannot deactivate your own account.")
-    if user.is_master_admin:
+    if user.is_master_admin or user.email == demo_service.DEMO_EMAIL:
         raise HTTPException(status_code=403, detail="Master Admin accounts cannot be modified.")
     if user.is_admin and not admin.is_master_admin:
         raise HTTPException(
@@ -361,7 +362,7 @@ def update_user_role(
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == master_admin.id:
         raise HTTPException(status_code=400, detail="You cannot change your own role.")
-    if user.is_master_admin:
+    if user.is_master_admin or user.email == demo_service.DEMO_EMAIL:
         raise HTTPException(status_code=403, detail="Master Admin role cannot be modified.")
     if payload.is_admin and not user.is_active:
         raise HTTPException(
@@ -384,7 +385,7 @@ def _call_groq(api_key: str, prompt: str) -> str:
             "Content-Type": "application/json",
         },
         json={
-            "model": "llama-3.3-70b-versatile",
+            "model": "openai/gpt-oss-20b",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.4,
             "max_tokens": 250,
@@ -497,10 +498,10 @@ Transaction History:
         insight = _call_gemini(server_gemini_key, prompt)
         return {"insight": insight, "provider": "Gemini"}
 
-    raise HTTPException(
-        status_code=400,
-        detail="No server AI key configured. Click 'Use Your Own API Key' to add a free Groq API key.",
-    )
+    return {
+        "insight": demo_service.generate_rule_based_insight(transactions),
+        "provider": "Smart Engine (Add Groq Key for LLM)",
+    }
 
 
 # --- PASSWORD RECOVERY ---
@@ -538,3 +539,14 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     user.password_hash = auth.get_password_hash(payload.new_password)
     db.commit()
     return {"message": "Password has been successfully reset."}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.post("/demo-login", response_model=schemas.Token)
+def demo_login(db: Session = Depends(get_db)):
+    user = demo_service.ensure_demo_user_and_seed(db)
+    return {"access_token": auth.create_access_token(data={"sub": user.email}), "token_type": "bearer"}
