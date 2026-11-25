@@ -1,8 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import Auth from './pages/Auth';
+const Auth = lazy(() => import('./pages/Auth'));
 import { RegisterPage } from './pages/RegisterPage';
-import Dashboard from './pages/Dashboard';
+const Dashboard = lazy(() => import('./pages/Dashboard'));
 import { AdminDashboard } from './pages/AdminDashboard';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
@@ -19,7 +19,8 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
 
 function AppRoutes() {
   return (
-    <Routes>
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center text-textMuted font-medium">Loading FinSight...</div>}>
+        <Routes>
       <Route
         path="/login"
         element={
@@ -62,6 +63,7 @@ function AppRoutes() {
         }
       />
     </Routes>
+      </Suspense>
   );
 }
 
