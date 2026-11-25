@@ -32,12 +32,23 @@ def ensure_demo_user_and_seed(db: Session) -> models.User:
         db.commit()
         db.refresh(user)
     if db.query(models.Transaction).filter(models.Transaction.user_id == user.id).count() < 5:
+        from sqlalchemy import text
         now = datetime.utcnow()
         for title, amt, cat, tx_type, days_ago in SAMPLE_TXS:
-            db.add(models.Transaction(
-                user_id=user.id, title=title, amount=amt,
-                category=cat, type=tx_type, date=now - timedelta(days=days_ago)
-            ))
+            db.execute(
+                text(
+                    "INSERT INTO transactions (user_id, amount, title, category, type, date) "
+                    "VALUES (:user_id, :amount, :title, :category, CAST(:tx_type AS transactiontype), :tx_date)"
+                ),
+                {
+                    "user_id": user.id,
+                    "amount": amt,
+                    "title": title,
+                    "category": cat,
+                    "tx_type": tx_type,
+                    "tx_date": now - timedelta(days=days_ago),
+                },
+            )
         db.commit()
     if db.query(models.Budget).filter(models.Budget.user_id == user.id).count() == 0:
         for cat, lim in [("Food", 450.0), ("Housing", 1600.0), ("Transport", 150.0), ("General", 200.0)]:
