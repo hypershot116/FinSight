@@ -16,7 +16,7 @@ export default function Auth() {
 
   useEffect(() => {
     let on = true;
-    const ping = () => api.get('/health', { timeout: 5000 }).then(() => { if (on) { setServerReady(true); clearInterval(id); } }).catch(() => {});
+    const ping = () => api.get('/status', { timeout: 5000 }).then(() => { if (on) { setServerReady(true); clearInterval(id); } }).catch(() => {});
     ping();
     const id = setInterval(ping, 2500);
     return () => { on = false; clearInterval(id); };

@@ -544,7 +544,7 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     return {"message": "Password has been successfully reset."}
 
 
-@app.get("/health")
+@app.get("/status")
 def health_check():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
 
