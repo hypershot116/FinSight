@@ -28,7 +28,11 @@ app.include_router(finance_routes.router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://finsight-pink-zeta.vercel.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -551,5 +555,9 @@ def health_check():
 
 @app.post("/demo-login", response_model=schemas.Token)
 def demo_login(db: Session = Depends(get_db)):
-    user = demo_service.ensure_demo_user_and_seed(db)
-    return {"access_token": auth.create_access_token(data={"sub": user.email}), "token_type": "bearer"}
+    try:
+        user = demo_service.ensure_demo_user_and_seed(db)
+        return {"access_token": auth.create_access_token(data={"sub": user.email}), "token_type": "bearer"}
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Demo setup failed: {exc}")
