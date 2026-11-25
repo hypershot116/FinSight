@@ -88,12 +88,13 @@ export default function Dashboard() {
     const a = document.createElement('a'); a.href = url; a.download = 'finsight_export.csv'; a.click(); URL.revokeObjectURL(url);
   };
 
+  React.useEffect(() => { if (transactions.length) fetchAiInsight(); }, [filter.month]);
   const fetchAiInsight = async () => {
     setLoadingAi(true);
     try {
       const headers: Record<string, string> = {};
       if (savedAiKey) { headers['X-AI-Key'] = savedAiKey; headers['X-AI-Provider'] = savedAiProvider; }
-      const res = await api.get('/insights', { headers });
+      const res = await api.get(`/insights?month=${filter.month}`, { headers });
       setAiInsight(res.data.insight);
       setAiProviderUsed(res.data.provider || '');
     } catch (error: any) {
@@ -282,7 +283,11 @@ export default function Dashboard() {
               <Search className="w-4 h-4 absolute left-2.5 top-2 text-gray-400" />
               <input type="text" placeholder="Search title..." value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} className="pl-8 pr-3 py-1.5 text-sm border rounded-lg outline-none focus:ring-1" />
             </div>
-            <input type="month" value={filter.month} onChange={e => setFilter({ ...filter, month: e.target.value })} className="px-3 py-1.5 text-sm border rounded-lg outline-none" />
+            <div className="flex items-center gap-1 bg-white border rounded-lg p-1">
+              <button onClick={() => { const d = new Date(filter.month + '-01'); d.setMonth(d.getMonth() - 1); setFilter({ ...filter, month: d.toISOString().slice(0, 7) }); }} className="px-2 py-0.5 text-gray-500 hover:bg-gray-100 rounded cursor-pointer">&lt;</button>
+              <input type="month" value={filter.month} onChange={e => setFilter({ ...filter, month: e.target.value })} className="px-1 py-1 text-sm outline-none bg-transparent w-28 text-center" />
+              <button onClick={() => { const d = new Date(filter.month + '-01'); d.setMonth(d.getMonth() + 1); setFilter({ ...filter, month: d.toISOString().slice(0, 7) }); }} className="px-2 py-0.5 text-gray-500 hover:bg-gray-100 rounded cursor-pointer">&gt;</button>
+            </div>
             <div className="flex bg-gray-100 p-1 rounded-lg">
               <button onClick={() => setFilter({ ...filter, type: 'ALL' })} className={`px-3 py-1 text-xs font-medium rounded-md ${filter.type === 'ALL' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}>All</button>
               <button onClick={() => setFilter({ ...filter, type: 'INCOME' })} className={`px-3 py-1 text-xs font-medium rounded-md ${filter.type === 'INCOME' ? 'bg-white shadow text-emerald-600' : 'text-gray-500'}`}>In</button>

@@ -561,3 +561,59 @@ def demo_login(db: Session = Depends(get_db)):
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Demo setup failed: {exc}")
+class AIParseRequest(BaseModel):
+    text: str
+
+import ai_engine
+from fastapi import Query
+
+@app.post("/insights/parse")
+def parse_natural_language_tx(
+    payload: AIParseRequest,
+    x_ai_key: Optional[str] = Header(default=None, alias="X-AI-Key"),
+    x_ai_provider: Optional[str] = Header(default="groq", alias="X-AI-Provider"),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    key = (x_ai_key or "").strip()
+    if not key: raise HTTPException(status_code=400, detail="API Key required.")
+    prompt = f"Extract transaction from: '{payload.text}'. Today is {datetime.utcnow().strftime('%Y-%m-%d')}. Respond ONLY with a JSON object containing keys: title (string), amount (number), category (Food, Transport, Housing, General, Salary, Investment, Other), type (INCOME or EXPENSE), date (YYYY-MM-DD)."
+    try:
+        res = ai_engine.call_llm(x_ai_provider, key, prompt, json_mode=True)
+        res = res.replace("```json", "").replace("```", "").strip()
+        import json
+        return schemas.TransactionCreate(**json.loads(res))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+@app.get("/insights")
+def get_ai_insights(
+    month: str = Query(..., description="YYYY-MM"),
+    x_ai_key: Optional[str] = Header(default=None, alias="X-AI-Key"),
+    x_ai_provider: Optional[str] = Header(default="groq", alias="X-AI-Provider"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    key = (x_ai_key or "").strip()
+    # Filter only for the selected month
+    start_date = f"{month}-01 00:00:00"
+    end_date = f"{month}-31 23:59:59"
+    txs = db.query(models.Transaction).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.date >= start_date,
+        models.Transaction.date <= end_date
+    ).all()
+    
+    if not key:
+        return {"insight": demo_service.generate_rule_based_insight(txs, month), "provider": "Rule-Based"}
+        
+    if len(txs) < 3:
+        return {"insight": f"Not enough transactions in {month} to generate a meaningful analysis.", "provider": x_ai_provider.capitalize()}
+        
+    tx_data = [{"amount": t.amount, "category": t.category, "type": t.type, "title": t.title} for t in txs]
+    prompt = f"You are a fast, precise financial advisor. Analyze ONLY this specific month ({month}) based on this data: {tx_data}. Give exactly 3 short sentences of specific, actionable advice about this month's spending and income flow. Be direct."
+    
+    try:
+        res = ai_engine.call_llm(x_ai_provider, key, prompt, json_mode=False)
+        return {"insight": res.strip(), "provider": x_ai_provider.capitalize()}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
