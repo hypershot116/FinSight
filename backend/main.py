@@ -5,10 +5,13 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 import requests
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Request, Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -24,6 +27,9 @@ models.Base.metadata.create_all(bind=engine)
 finance_routes.ensure_finance_schema(engine)
 
 app = FastAPI(title="FinSight API")
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(finance_routes.router)
 
 app.add_middleware(
@@ -214,7 +220,8 @@ def verify_otp(payload: OTPVerifyRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/login", response_model=schemas.Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if not user or not auth.verify_password(form_data.password, user.password_hash):
         raise HTTPException(
@@ -513,7 +520,8 @@ Transaction History:
 
 # --- PASSWORD RECOVERY ---
 @app.post("/forgot-password")
-def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+def forgot_password(request: Request, payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == payload.email).first()
 
     if user and user.is_active:
@@ -554,7 +562,8 @@ def health_check():
 
 
 @app.post("/demo-login", response_model=schemas.Token)
-def demo_login(db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def demo_login(request: Request, db: Session = Depends(get_db)):
     try:
         user = demo_service.ensure_demo_user_and_seed(db)
         return {"access_token": auth.create_access_token(data={"sub": user.email}), "token_type": "bearer"}
